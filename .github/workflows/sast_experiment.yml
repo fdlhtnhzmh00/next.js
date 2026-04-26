@@ -1,0 +1,45 @@
+name: Pilot Study - SAST Efficiency
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: 'Commit Hash (Ambil dari CSV 30 Sampel)'
+        required: true
+
+jobs:
+  run-sast-experiment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_commit }}
+          fetch-depth: 2 # Penting: agar Git tahu file apa yang berubah dari commit sebelumnya
+
+      - name: Setup Python & Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: EXPERIMENT 1 - Baseline (Full-SAST)
+        id: baseline
+        run: |
+          echo "Memulai Full Scan..."
+          # Command 'time' akan mencatat durasi komputasi riil di runner
+          time semgrep scan --config=p/javascript --quiet .
+        continue-on-error: true
+
+      - name: EXPERIMENT 2 - Proposed (Selective-SAST)
+        id: selective
+        run: |
+          echo "Mendeteksi file yang dimodifikasi..."
+          # Ambil daftar file JS/TS yang berubah di commit ini
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '\.(js|jsx|ts|tsx)$' || true)
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "Tidak ada file relevan yang berubah. Waktu Scan = 0 detik."
+          else
+            echo "Memulai Targeted Scan pada file: $CHANGED_FILES"
+            time semgrep scan --config=p/javascript --quiet $CHANGED_FILES
+          fi
+        continue-on-error: true
